@@ -121,20 +121,20 @@ namespace SignalChatik.Controllers
         [HttpPost]
         [Route("refresh-token")]
         public async Task<IActionResult> RefreshToken()
-        {
+       {
             try
             {
-                if (!Request.Cookies.TryGetValue("X-Refresh-Token", out string refreshToken))
-                    return JsonResponse.CreateBad(HttpStatusCode.Forbidden, $"No refresh token in cookies");
+                if (!Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out string refreshToken))
+                    return JsonResponse.CreateBad(9001, $"No refresh token in cookies");
 
                 JwtSecurityToken decodedRefreshToken = ReadToken(refreshToken);
                 if (decodedRefreshToken == null)
-                    return JsonResponse.CreateBad(HttpStatusCode.Forbidden, $"Refresh token is broken or expired");
+                    return JsonResponse.CreateBad(9001, $"Refresh token is broken or expired");
 
                 string tokenGuid = decodedRefreshToken.Payload["sub"]?.ToString();
                 string tokenEmail = decodedRefreshToken.Payload["email"]?.ToString();
                 if (string.IsNullOrEmpty(tokenGuid) || string.IsNullOrEmpty(tokenEmail))
-                    return JsonResponse.CreateBad(HttpStatusCode.Forbidden, $"Payload is invalid");
+                    return JsonResponse.CreateBad(9001, $"Payload is invalid");
 
                 var users = await context.Users
                                          .Include(cur => cur.Roles)
@@ -150,7 +150,7 @@ namespace SignalChatik.Controllers
                         cur.RefreshTokens.Contains(userCurrentToken));
 
                 if (user == null)
-                    return JsonResponse.CreateBad(HttpStatusCode.Forbidden, $"Payload is invalid");
+                    return JsonResponse.CreateBad(9001, $"Payload is invalid");
 
                 userCurrentToken.RefreshToken = CreateRefreshToken(user);
                 await context.SaveChangesAsync();
@@ -169,9 +169,11 @@ namespace SignalChatik.Controllers
         {
             try
             {
-                Request.Cookies.TryGetValue("X-Refresh-Token", out var refreshToken);
+                Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out var refreshToken);
                 if (string.IsNullOrEmpty(refreshToken))
                     return JsonResponse.CreateBad(HttpStatusCode.Unauthorized, "No token");
+
+                Response.Cookies.Delete("X-Chatik-Refresh-Token");
 
                 List<UserRefreshToken> userCurrentToken = await context.RefreshTokens.ToListAsync();
                 userCurrentToken.RemoveAll(cur => cur.RefreshToken == refreshToken);
@@ -190,13 +192,13 @@ namespace SignalChatik.Controllers
         public IActionResult Test()
         {
             object access = Request.Headers["Authorization"][0];
-            Request.Cookies.TryGetValue("X-Refresh-Token", out var refresh);
+            Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out var refresh);
             return Ok($"good - {UserId}");
         }
 
         private JsonResult CreateTokensResponse(User user, string refreshToken)
         {
-            Response.Cookies.Append("X-Refresh-Token",
+            Response.Cookies.Append("X-Chatik-Refresh-Token",
                         refreshToken,
                         new CookieOptions()
                         {

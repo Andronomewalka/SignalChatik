@@ -30,11 +30,11 @@ namespace SignalChatik
                 options.AddPolicy(AllowLocalOrigin,
                                   builder =>
                                   {
-                                      builder.WithOrigins("http://127.0.0.1:3000")
-                                                          .AllowAnyHeader()
-                                                          .AllowAnyMethod()
-                                                          .AllowCredentials()
-                                                          .SetPreflightMaxAge(TimeSpan.FromMinutes(5));
+                                      builder.WithOrigins("http://127.0.0.1:3000", "http://localhost:3000")
+                                             .AllowAnyHeader()
+                                             .AllowAnyMethod()
+                                             .AllowCredentials()
+                                             .SetPreflightMaxAge(TimeSpan.FromMinutes(5));
                                   });
             });
 
