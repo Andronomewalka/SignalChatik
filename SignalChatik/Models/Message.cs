@@ -6,12 +6,19 @@ using System.Threading.Tasks;
 
 namespace SignalChatik.Models
 {
-    public class User
+    public class Message
     {
+
         [Key]
         public int Id { get; set; }
 
-        public int AuthUserId { get; set; }
-        public AuthUser AuthUser { get; set; }
+        [Required]
+        public Channel SenderChannel { get; set; }
+
+        [Required]
+        public Channel ReceiverChannel { get; set; }
+
+        [Required]
+        public string Data { get; set; }
     }
 }

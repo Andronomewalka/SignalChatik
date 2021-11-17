@@ -39,7 +39,8 @@ namespace SignalChatik
             });
 
             services.AddDbContextPool<ChatikContext>(options =>
-                options.UseSqlServer(Configuration.GetConnectionString("ChatikDatabase")));
+                options.UseSqlServer(Configuration.GetConnectionString("ChatikDatabase"),
+                o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
             var authOptionsConfiguration = Configuration.GetSection("Auth");
             var authOptions = authOptionsConfiguration.Get<AuthOptions>();

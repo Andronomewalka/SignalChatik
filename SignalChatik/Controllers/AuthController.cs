@@ -39,11 +39,10 @@ namespace SignalChatik.Controllers
         {
             try
             {
-                var users = await context.Users.Include(cur => cur.Roles)
-                                               .Include(cur => cur.RefreshTokens)
-                                               .ToListAsync();
+                var users = await context.AuthUsers.Include(cur => cur.RefreshTokens)
+                                                   .ToListAsync();
 
-                User requestedUser = users.FirstOrDefault(cur => cur.Email == userDTO.Email);
+                AuthUser requestedUser = users.FirstOrDefault(cur => cur.Email == userDTO.Email);
                 if (requestedUser == null)
                     return JsonResponse.CreateBad(HttpStatusCode.NotFound, $"User not found");
 
@@ -52,7 +51,7 @@ namespace SignalChatik.Controllers
 
                 if (userDTO.Hash + storedSalt == storedHash)
                 {
-                    UserRefreshToken userRefreshToken = new UserRefreshToken()
+                    AuthUserRefreshToken userRefreshToken = new AuthUserRefreshToken()
                     {
                         RefreshToken = CreateRefreshToken(requestedUser)
                     };
@@ -77,38 +76,31 @@ namespace SignalChatik.Controllers
         {
             try
             {
-                bool isUserExist = context.Users.Any(cur => cur.Email == userDTO.Email);
+                bool isUserExist = context.AuthUsers.Any(cur => cur.Email == userDTO.Email);
                 if (isUserExist)
                     return JsonResponse.CreateBad(HttpStatusCode.Forbidden, $"User already exist");
 
                 string salt = Salt.CreateSalt();
-                User user = new User()
+                AuthUser user = new AuthUser()
                 {
                     Email = userDTO.Email,
                     Guid = Guid.NewGuid(),
                     Hash = userDTO.Hash + salt,
                     Salt = salt,
-                    Roles = new List<UserRole>()
-                    {
-                        new UserRole()
-                        {
-                            Role = Role.User
-                        }
-                    }
+                    AuthUserRoleId = AuthUserRoleId.User
                 };
 
-                UserRefreshToken userRefreshToken = new UserRefreshToken()
+                AuthUserRefreshToken userRefreshToken = new AuthUserRefreshToken()
                 {
                     RefreshToken = CreateRefreshToken(user)
                 };
 
-                user.RefreshTokens = new List<UserRefreshToken>()
+                user.RefreshTokens = new List<AuthUserRefreshToken>()
                 {
                     userRefreshToken
                 };
 
-                await context.Users.AddAsync(user);
-                await context.Roles.AddRangeAsync(user.Roles);
+                await context.AuthUsers.AddAsync(user);
                 await context.SaveChangesAsync();
                 return CreateTokensResponse(user, userRefreshToken.RefreshToken);
             }
@@ -127,7 +119,10 @@ namespace SignalChatik.Controllers
                 if (!Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out string refreshToken))
                     return JsonResponse.CreateBad(9001, $"No refresh token in cookies");
 
-                JwtSecurityToken decodedRefreshToken = ReadToken(refreshToken);
+                JwtSecurityToken decodedRefreshToken =
+                    JwtHelper.ReadToken(refreshToken, 
+                        jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters);
+
                 if (decodedRefreshToken == null)
                     return JsonResponse.CreateBad(9001, $"Refresh token is broken or expired");
 
@@ -136,15 +131,14 @@ namespace SignalChatik.Controllers
                 if (string.IsNullOrEmpty(tokenGuid) || string.IsNullOrEmpty(tokenEmail))
                     return JsonResponse.CreateBad(9001, $"Payload is invalid");
 
-                var users = await context.Users
-                                         .Include(cur => cur.Roles)
+                var users = await context.AuthUsers
                                          .Include(cur => cur.RefreshTokens)
                                          .ToListAsync();
 
-                UserRefreshToken userCurrentToken = 
-                    context.RefreshTokens.FirstOrDefault(cur => cur.RefreshToken == refreshToken);
+                AuthUserRefreshToken userCurrentToken = 
+                    context.AuthRefreshTokens.FirstOrDefault(cur => cur.RefreshToken == refreshToken);
 
-                User user = users.FirstOrDefault(cur =>
+                AuthUser user = users.FirstOrDefault(cur =>
                         cur.Guid.ToString() == decodedRefreshToken.Payload["sub"].ToString() &&
                         cur.Email == decodedRefreshToken.Payload["email"].ToString() &&
                         cur.RefreshTokens.Contains(userCurrentToken));
@@ -175,7 +169,7 @@ namespace SignalChatik.Controllers
 
                 Response.Cookies.Delete("X-Chatik-Refresh-Token");
 
-                List<UserRefreshToken> userCurrentToken = await context.RefreshTokens.ToListAsync();
+                List<AuthUserRefreshToken> userCurrentToken = await context.AuthRefreshTokens.ToListAsync();
                 userCurrentToken.RemoveAll(cur => cur.RefreshToken == refreshToken);
                 await context.SaveChangesAsync();
                 return Ok();
@@ -196,7 +190,7 @@ namespace SignalChatik.Controllers
             return Ok($"good - {UserId}");
         }
 
-        private JsonResult CreateTokensResponse(User user, string refreshToken)
+        private JsonResult CreateTokensResponse(AuthUser user, string refreshToken)
         {
             Response.Cookies.Append("X-Chatik-Refresh-Token",
                         refreshToken,
@@ -213,10 +207,10 @@ namespace SignalChatik.Controllers
             });
         }
 
-        private string CreateAccessToken(User user) => GenerateJWT(user, authOptions.Value.AccessTokenLifetime);
-        private string CreateRefreshToken(User user) => GenerateJWT(user, authOptions.Value.RefreshTokenLifetime);
+        private string CreateAccessToken(AuthUser user) => GenerateJWT(user, authOptions.Value.AccessTokenLifetime);
+        private string CreateRefreshToken(AuthUser user) => GenerateJWT(user, authOptions.Value.RefreshTokenLifetime);
 
-        private string GenerateJWT(User user, int expirationMinutes)
+        private string GenerateJWT(AuthUser user, int expirationMinutes)
         {
             AuthOptions authParams = authOptions.Value;
 
@@ -227,12 +221,8 @@ namespace SignalChatik.Controllers
             {
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Sub, user.Guid.ToString()),
+                new Claim("role", user.AuthUserRoleId.ToString())
             };
-
-            foreach (var role in user.Roles)
-            {
-                claims.Add(new Claim("role", role.Role.ToString()));
-            }
 
             JwtSecurityToken token = new JwtSecurityToken(authParams.Issuer,
                 authParams.Audience,
@@ -241,26 +231,6 @@ namespace SignalChatik.Controllers
                 signingCredentials: credentials);
 
             return new JwtSecurityTokenHandler().WriteToken(token);
-        }
-
-        private JwtSecurityToken ReadToken(string token)
-        {
-            try
-            {
-                var handler = new JwtSecurityTokenHandler();
-                TokenValidationParameters validationParams =
-                    jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters;
-                var validate = handler.ValidateToken(token, validationParams, out SecurityToken securityToken);
-                return securityToken as JwtSecurityToken;
-            }
-            catch (SecurityTokenException e)
-            {
-                return null;
-            }
-            catch (Exception e)
-            {
-                return null;
-            }
         }
     }
 }

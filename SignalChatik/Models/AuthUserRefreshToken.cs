@@ -2,7 +2,7 @@
 
 namespace SignalChatik.Models
 {
-    public class UserRefreshToken
+    public class AuthUserRefreshToken
     {
         [Key]
         public int Id { get; set; }
