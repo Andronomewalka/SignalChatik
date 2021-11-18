@@ -1,13 +1,16 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.Collections.Generic;
+
+#nullable disable
 
 namespace SignalChatik.Models
 {
-    public class AuthUserRefreshToken
+    public partial class AuthUserRefreshToken
     {
-        [Key]
         public int Id { get; set; }
-
-        [Required]
         public string RefreshToken { get; set; }
+        public int? AuthUserId { get; set; }
+
+        public virtual AuthUser AuthUser { get; set; }
     }
 }

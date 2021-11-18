@@ -39,7 +39,8 @@ namespace SignalChatik.Controllers
         {
             try
             {
-                var users = await context.AuthUsers.Include(cur => cur.RefreshTokens)
+                var users = await context.AuthUsers.Include(cur => cur.AuthUserRefreshTokens)
+                                                   .Include(cur => cur.AuthRole)
                                                    .ToListAsync();
 
                 AuthUser requestedUser = users.FirstOrDefault(cur => cur.Email == userDTO.Email);
@@ -53,10 +54,11 @@ namespace SignalChatik.Controllers
                 {
                     AuthUserRefreshToken userRefreshToken = new AuthUserRefreshToken()
                     {
+                        Id = await context.AuthUserRefreshTokens.MaxAsync(cur => cur.Id) + 1,
                         RefreshToken = CreateRefreshToken(requestedUser)
                     };
 
-                    requestedUser.RefreshTokens.Add(userRefreshToken);
+                    requestedUser.AuthUserRefreshTokens.Add(userRefreshToken);
                     await context.SaveChangesAsync();
                     return CreateTokensResponse(requestedUser, userRefreshToken.RefreshToken);
                 }
@@ -87,21 +89,26 @@ namespace SignalChatik.Controllers
                     Guid = Guid.NewGuid(),
                     Hash = userDTO.Hash + salt,
                     Salt = salt,
-                    AuthUserRoleId = AuthUserRoleId.User
+                    AuthRoleId = 0
                 };
+
+                await context.AuthUsers.AddAsync(user);
+                await context.SaveChangesAsync();
+
+                user = (await context.AuthUsers.Include(cur => cur.AuthRole)
+                                               .ToListAsync()).FirstOrDefault(cur => cur.Guid.ToString() == user.Guid.ToString());
 
                 AuthUserRefreshToken userRefreshToken = new AuthUserRefreshToken()
                 {
                     RefreshToken = CreateRefreshToken(user)
                 };
 
-                user.RefreshTokens = new List<AuthUserRefreshToken>()
+                user.AuthUserRefreshTokens = new List<AuthUserRefreshToken>()
                 {
                     userRefreshToken
                 };
 
-                await context.AuthUsers.AddAsync(user);
-                await context.SaveChangesAsync();
+
                 return CreateTokensResponse(user, userRefreshToken.RefreshToken);
             }
             catch (Exception e)
@@ -113,14 +120,14 @@ namespace SignalChatik.Controllers
         [HttpPost]
         [Route("refresh-token")]
         public async Task<IActionResult> RefreshToken()
-       {
+        {
             try
             {
                 if (!Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out string refreshToken))
                     return JsonResponse.CreateBad(9001, $"No refresh token in cookies");
 
                 JwtSecurityToken decodedRefreshToken =
-                    JwtHelper.ReadToken(refreshToken, 
+                    JwtHelper.ReadToken(refreshToken,
                         jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters);
 
                 if (decodedRefreshToken == null)
@@ -132,16 +139,17 @@ namespace SignalChatik.Controllers
                     return JsonResponse.CreateBad(9001, $"Payload is invalid");
 
                 var users = await context.AuthUsers
-                                         .Include(cur => cur.RefreshTokens)
+                                         .Include(cur => cur.AuthUserRefreshTokens)
+                                         .Include(cur => cur.AuthRole)
                                          .ToListAsync();
 
-                AuthUserRefreshToken userCurrentToken = 
-                    context.AuthRefreshTokens.FirstOrDefault(cur => cur.RefreshToken == refreshToken);
+                AuthUserRefreshToken userCurrentToken =
+                    context.AuthUserRefreshTokens.FirstOrDefault(cur => cur.RefreshToken == refreshToken);
 
                 AuthUser user = users.FirstOrDefault(cur =>
                         cur.Guid.ToString() == decodedRefreshToken.Payload["sub"].ToString() &&
                         cur.Email == decodedRefreshToken.Payload["email"].ToString() &&
-                        cur.RefreshTokens.Contains(userCurrentToken));
+                        cur.AuthUserRefreshTokens.Contains(userCurrentToken));
 
                 if (user == null)
                     return JsonResponse.CreateBad(9001, $"Payload is invalid");
@@ -169,7 +177,7 @@ namespace SignalChatik.Controllers
 
                 Response.Cookies.Delete("X-Chatik-Refresh-Token");
 
-                List<AuthUserRefreshToken> userCurrentToken = await context.AuthRefreshTokens.ToListAsync();
+                List<AuthUserRefreshToken> userCurrentToken = await context.AuthUserRefreshTokens.ToListAsync();
                 userCurrentToken.RemoveAll(cur => cur.RefreshToken == refreshToken);
                 await context.SaveChangesAsync();
                 return Ok();
@@ -221,7 +229,7 @@ namespace SignalChatik.Controllers
             {
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(JwtRegisteredClaimNames.Sub, user.Guid.ToString()),
-                new Claim("role", user.AuthUserRoleId.ToString())
+                new Claim("role", user.AuthRole.Name.ToString())
             };
 
             JwtSecurityToken token = new JwtSecurityToken(authParams.Issuer,

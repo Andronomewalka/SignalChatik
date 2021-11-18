@@ -1,17 +1,29 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Threading.Tasks;
+
+#nullable disable
 
 namespace SignalChatik.Models
 {
-    public class User
+    public partial class User
     {
-        [Key]
-        public int Id { get; set; }
+        public User()
+        {
+            MessageReceivers = new HashSet<Message>();
+            MessageSenders = new HashSet<Message>();
+            RoomUsers = new HashSet<RoomUser>();
+            Rooms = new HashSet<Room>();
+        }
 
-        public int AuthUserId { get; set; }
-        public AuthUser AuthUser { get; set; }
+        public int Id { get; set; }
+        public int? ContentId { get; set; }
+        public int? AuthId { get; set; }
+
+        public virtual AuthUser Auth { get; set; }
+        public virtual ChannelContent Content { get; set; }
+        public virtual ICollection<Message> MessageReceivers { get; set; }
+        public virtual ICollection<Message> MessageSenders { get; set; }
+        public virtual ICollection<RoomUser> RoomUsers { get; set; }
+        public virtual ICollection<Room> Rooms { get; set; }
     }
 }
