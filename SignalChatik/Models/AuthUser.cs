@@ -1,27 +1,29 @@
-﻿using System;
-using System.Collections.Generic;
-
-#nullable disable
+﻿using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace SignalChatik.Models
 {
-    public partial class AuthUser
+    public partial class AuthUser : Clustered
     {
-        public AuthUser()
-        {
-            AuthUserRefreshTokens = new HashSet<AuthUserRefreshToken>();
-            Users = new HashSet<User>();
-        }
-
-        public int Id { get; set; }
-        public Guid Guid { get; set; }
+        [Required]
+        [StringLength(100, ErrorMessage = "Email cannot exceed 100 characters")]
         public string Email { get; set; }
-        public string Hash { get; set; }
-        public string Salt { get; set; }
-        public int? AuthRoleId { get; set; }
 
-        public virtual AuthRole AuthRole { get; set; }
-        public virtual ICollection<AuthUserRefreshToken> AuthUserRefreshTokens { get; set; }
-        public virtual ICollection<User> Users { get; set; }
+        [Required]
+        [StringLength(100, ErrorMessage = "Hash cannot exceed 100 characters")]
+        public string Hash { get; set; }
+
+        [Required]
+        [StringLength(100, ErrorMessage = "Salt cannot exceed 100 characters")]
+        public string Salt { get; set; }
+
+
+        [Required]
+        public ICollection<AuthUserRefreshToken> RefreshTokens { get; set; }
+
+        [Required]
+        public ICollection<AuthUserRole> Roles { get; set; }
+
+        public User User { get; set; }
     }
 }

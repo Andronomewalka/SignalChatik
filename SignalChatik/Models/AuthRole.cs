@@ -1,20 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-
-#nullable disable
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace SignalChatik.Models
 {
-    public partial class AuthRole
+    public enum AuthUserRoleId
     {
-        public AuthRole()
-        {
-            AuthUsers = new HashSet<AuthUser>();
-        }
+        User, Admin
+    }
 
+    public class AuthUserRole
+    {
+        [Key]
         public int Id { get; set; }
-        public string Name { get; set; }
 
-        public virtual ICollection<AuthUser> AuthUsers { get; set; }
+        [Required]
+        public AuthUserRoleId RoleId { get; set; }
+
+
+        [Required]
+        public AuthUser AuthUser { get; set; }
     }
 }

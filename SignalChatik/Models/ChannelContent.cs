@@ -1,23 +1,21 @@
 ﻿using System;
-using System.Collections.Generic;
-
-#nullable disable
+using System.ComponentModel.DataAnnotations;
 
 namespace SignalChatik.Models
 {
-    public partial class ChannelContent
+    public class ChannelContent
     {
-        public ChannelContent()
-        {
-            Rooms = new HashSet<Room>();
-            Users = new HashSet<User>();
-        }
-
+        [Key]
         public int Id { get; set; }
+
+        [Required]
+        [StringLength(100, ErrorMessage = "Name cannot exceed 100 characters")]
         public string Name { get; set; }
         public string Description { get; set; }
+        
 
-        public virtual ICollection<Room> Rooms { get; set; }
-        public virtual ICollection<User> Users { get; set; }
+        [Required]
+        public Channel Channel { get; set; }
+        public Guid ChannelId { get; set; }
     }
 }

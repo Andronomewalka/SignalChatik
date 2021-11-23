@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-#nullable disable
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace SignalChatik.Models
 {
@@ -9,8 +6,9 @@ namespace SignalChatik.Models
     {
         public int Id { get; set; }
         public string RefreshToken { get; set; }
-        public int? AuthUserId { get; set; }
 
-        public virtual AuthUser AuthUser { get; set; }
+
+        [Required]
+        public AuthUser AuthUser { get; set; }
     }
 }
