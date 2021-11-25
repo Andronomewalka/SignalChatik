@@ -5,11 +5,9 @@ using SignalChatik.DTO;
 using SignalChatik.Helpers;
 using SignalChatik.Models;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Security.Claims;
-using System.Threading.Tasks;
 
 namespace SignalChatik.Controllers
 {
@@ -44,16 +42,6 @@ namespace SignalChatik.Controllers
                 Channel requestedChannel = context.Channels.FirstOrDefault(cur => cur.Id == channelId);
                 if (requestedChannel == null)
                     return JsonResponse.CreateBad(404, $"Channel doesn't exist");
-
-                //var sss = context.Messages
-                //    .Include(cur => cur.Sender)
-                //    .Include(cur => cur.Receiver);
-
-                //var some = sss
-                //    .Where(cur => (cur.Receiver == requestedChannel && cur.Sender == associatedUser.Channel));
-
-                //var any = sss
-                //    .Where(cur => (cur.Receiver == associatedUser.Channel && cur.Sender == requestedChannel));
 
                 var messages = context.Messages
                     .Include(cur => cur.Sender)
