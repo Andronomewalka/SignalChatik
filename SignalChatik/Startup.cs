@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using SignalChatik.Helpers;
 using SignalChatik.Models;
 using System;
+using System.Threading.Tasks;
 
 namespace SignalChatik
 {
@@ -60,7 +61,26 @@ namespace SignalChatik
                         ValidateIssuerSigningKey = true,
                         ClockSkew = TimeSpan.Zero
                     };
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnMessageReceived = context =>
+                        {
+                            var accessToken = context.Request.Query["access_token"];
+
+                            // если запрос направлен хабу
+                            var path = context.HttpContext.Request.Path;
+                            if (!string.IsNullOrEmpty(accessToken) &&
+                                path.StartsWithSegments("/chatik"))
+                            {
+                                // получаем токен из строки запроса
+                                context.Token = accessToken;
+                            }
+                            return Task.CompletedTask;
+                        }
+                    };
                 });
+
+            services.AddSignalR();
 
             services.AddControllers();
 
@@ -75,7 +95,11 @@ namespace SignalChatik
                 app.UseDeveloperExceptionPage();
             }
 
+            app.UseDefaultFiles();
+            app.UseStaticFiles();
+
             app.UseRouting();
+
             app.UseCors(AllowLocalOrigin);
 
             app.UseAuthentication();
@@ -84,6 +108,7 @@ namespace SignalChatik
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+                endpoints.MapHub<ChatikHub>("/chatik");
             });
         }
     }

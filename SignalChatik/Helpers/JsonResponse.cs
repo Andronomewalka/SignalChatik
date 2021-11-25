@@ -6,6 +6,11 @@ namespace SignalChatik.Helpers
 {
     public static class JsonResponse
     {
+        public static JsonResult CreateGood()
+        {
+            return new JsonResult(null);
+        }
+
         public static JsonResult CreateGood<T>(T data)
         {
             return new JsonResult(data);

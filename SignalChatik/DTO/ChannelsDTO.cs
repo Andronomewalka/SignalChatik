@@ -1,15 +1,8 @@
-﻿using System;
+﻿using SignalChatik.Models;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace SignalChatik.DTO
 {
-    public enum ChannelType
-    {
-        User, Room
-    }
-
     public class ChannelDTO
     {
         public int Id { get; set; }
@@ -18,14 +11,13 @@ namespace SignalChatik.DTO
         public string Description { get; set; }
     }
 
-    public class ChannelRoomDTO : ChannelDTO
+    public class GetChannelsDTO
     {
-        public ChannelDTO OwnerUser { get; set; }
-        public IEnumerable<ChannelDTO> Members { get; set; }
+        public IEnumerable<ChannelDTO> Channels { get; set; }
     }
 
-    public class ChannelsDTO
+    public class ConnectChannelDTO
     {
-        public List<ChannelDTO> Channels { get; set; }
+        public ChannelDTO Channel { get; set; }
     }
 }

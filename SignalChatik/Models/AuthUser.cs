@@ -1,10 +1,23 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SignalChatik.Models
 {
-    public partial class AuthUser : Clustered
+    public partial class AuthUser
     {
+        public AuthUser()
+        {
+            Guid = Guid.NewGuid();
+        }
+
+        [Key]
+        public int Id { get; set; }
+
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public Guid Guid { get; set; }
+
         [Required]
         [StringLength(100, ErrorMessage = "Email cannot exceed 100 characters")]
         public string Email { get; set; }

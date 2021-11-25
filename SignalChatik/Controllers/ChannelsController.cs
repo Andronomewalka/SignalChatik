@@ -1,153 +1,120 @@
-﻿//using Microsoft.AspNetCore.Authentication.JwtBearer;
-//using Microsoft.AspNetCore.Authorization;
-//using Microsoft.AspNetCore.Mvc;
-//using Microsoft.Extensions.Options;
-//using SignalChatik.DTO;
-//using SignalChatik.Helpers;
-//using SignalChatik.Models;
-//using System;
-//using System.Collections;
-//using System.Collections.Generic;
-//using System.IdentityModel.Tokens.Jwt;
-//using System.Linq;
-//using System.Net;
-//using System.Security.Claims;
-//using System.Threading.Channels;
-//using System.Threading.Tasks;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using SignalChatik.DTO;
+using SignalChatik.Helpers;
+using SignalChatik.Models;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
+using System.Net;
+using System.Security.Claims;
+using System.Threading.Tasks;
 
-//namespace SignalChatik.Controllers
-//{
-//    [Route("[controller]")]
-//    [ApiController]
-//    [Produces("application/json")]
-//    public class ChannelsController : ChatikContextController
-//    {
-//        private readonly IOptionsMonitor<JwtBearerOptions> jwtOptions;
-//        private Guid UserId => Guid.Parse(User.Claims.Single(cur => cur.Type == ClaimTypes.NameIdentifier).Value);
+namespace SignalChatik.Controllers
+{
+    [Route("[controller]")]
+    [ApiController]
+    [Produces("application/json")]
+    public class ChannelsController : ChatikContextController
+    {
+        private Guid UserId => Guid.Parse(User.Claims.Single(cur => cur.Type == ClaimTypes.NameIdentifier).Value);
 
-//        public ChannelsController(IOptionsMonitor<JwtBearerOptions> jwtOptions, ChatikContext context) : base(context)
-//        {
-//            this.jwtOptions = jwtOptions;
-//        }
+        public ChannelsController(ChatikContext context) : base(context)
+        {
+        }
 
-//        [HttpGet]
-//        [Authorize(Roles = "User")]
-//        [Route("")]
-//        public IActionResult GetChannels()
-//        {
-//            try
-//            {
-//                User associatedUser = context.Users.FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
-//                if (associatedUser == null)
-//                {
-//                    AuthUser authUser = context.AuthUsers.FirstOrDefault(cur => cur.Guid.ToString() == UserId.ToString());
-//                    if (authUser == null)
-//                        return JsonResponse.CreateBad(401, $"No auth for user guid found");
+        [HttpGet]
+        [Authorize(Roles = "User")]
+        public IActionResult Get()
+        {
+            try
+            {
+                User associatedUser = context.Users
+                    .Include(cur => cur.Channel)
+                    .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
-//                    associatedUser = new User()
-//                    {
-//                        Auth = authUser,
-//                        Content = new ChannelContent()
-//                        {
-//                            Name = authUser.Email
-//                        }
-//                    };
+                if (associatedUser == null)
+                    return JsonResponse.CreateBad(401, $"No auth for user guid found");
 
-//                    return JsonResponse.CreateGood(new ChannelsDTO()
-//                    {
-//                        Channels = new List<ChannelDTO>()
-//                    });
-//                }
-//                else
-//                {
-//                    IEnumerable<ChannelDTO> resultRooms = associatedUser.Rooms.Select(cur => new ChannelRoomDTO()
-//                    {
-//                        Id = cur.Id,
-//                        Name = cur.Content.Name,
-//                        Description = cur.Content.Description,
-//                        Type = ChannelType.Room,
-//                        OwnerUser = new ChannelDTO()
-//                        {
+                var connectedChannels = context.ConnectedChannels
+                    .Include(cur => cur.For)
+                    .Include(cur => cur.Connected)
+                    .Where(cur => cur.For == associatedUser.Channel)
+                    .Select(cur => new ChannelDTO()
+                    {
+                        Id = cur.Connected.Id,
+                        Name = cur.Connected.Name,
+                        Description = cur.Connected.Description,
+                        Type = cur.Connected.ChannelTypeId
+                    });
 
-//                            Id = cur.Owner.Id,
-//                            Name = cur.Owner.Content.Name,
-//                            Description = cur.Owner.Content.Description,
-//                        },
-//                        Members = cur.RoomUsers
-//                            .Where(roomUser => roomUser.Room == cur)
-//                            .Select(roomUser => new ChannelDTO()
-//                            {
-//                                Id = roomUser.User.Id,
-//                                Name = roomUser.User.Content.Name,
-//                                Description = roomUser.User.Content.Description,
-//                            })
-//                    });
+                return JsonResponse.CreateGood(new GetChannelsDTO()
+                {
+                    Channels = connectedChannels
+                });
+            }
+            catch (Exception e)
+            {
+                return JsonResponse.CreateBad(HttpStatusCode.InternalServerError, "Server fucked up");
+            }
+        }
 
-//                    IEnumerable<ChannelDTO> resultConnectedUsers = context.UserUsers
-//                        .Where(cur => cur.ForUser == associatedUser)
-//                        .Select(cur => new ChannelDTO()
-//                        {
-//                            Id = cur.ConnectedUser.Id,
-//                            Name = cur.ConnectedUser.Content.Name,
-//                            Description = cur.ConnectedUser.Content.Description
-//                        });
+        [HttpPost]
+        [Authorize(Roles = "User")]
+        [Route("connect")]
+        public async Task<ActionResult<User>> Connect([FromBody] string channelName)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(channelName))
+                    return JsonResponse.CreateBad(400, $"Channel is empty");
 
-//                    return JsonResponse.CreateGood(resultConnectedUsers.Concat(resultConnectedUsers));
-//                }
-//            }
-//            catch (Exception e)
-//            {
-//                return JsonResponse.CreateBad(HttpStatusCode.InternalServerError, "Server fucked up");
-//            }
-//        }
+                User associatedUser = context.Users
+                .Include(cur => cur.Channel)
+                .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
+                if (associatedUser == null)
+                    return JsonResponse.CreateBad(401, $"No auth for user guid found");
 
-//        [HttpGet]
-//        [Route("test")]
+                List<ConnectedChannel> connectedChannels = context.ConnectedChannels
+                    .Where(cur => cur.For == associatedUser.Channel)
+                    .ToList();
 
-//        public async Task<IActionResult> Test()
-//        {
-//            //User user1 = new User()
-//            //{
-//            //    Content = new ChannelContent()
-//            //    {
-//            //        Name = "some user"
-//            //    }
-//            //};
+                Channel requestedChannel = context.Channels
+                    .FirstOrDefault(cur => cur.Name == channelName);
 
-//            //User user2 = new User()
-//            //{
-//            //    Content = new ChannelContent()
-//            //    {
-//            //        Name = "another user"
-//            //    }
-//            //};
+                if (requestedChannel == null)
+                    return JsonResponse.CreateBad(404, $"Channel doesn't exist");
 
-//            //Room roomChannel = new Room()
-//            //{
-//            //    Owner = user1,
-//            //    RoomUsers = new List<User>()
-//            //    {
-//            //        user2
-//            //    },
-//            //    Content = new ChannelContent()
-//            //    {
-//            //        Name = "some room"
-//            //    }
-//            //};
+                if (connectedChannels.Any(cur => cur.Connected == requestedChannel))
+                    return JsonResponse.CreateBad(422, $"Channel already connected");
 
-//            //Message fromUser1ToUser2 = new Message()
-//            //{
-//            //    SenderChannel = user1Channel,
-//            //    ReceiverChannel = user2Channel,
-//            //    Data = "hello"
-//            //};
-
-//            //await context.Rooms.AddRangeAsync(user1Channel, user2Channel, roomChannel);
-//            //await context.Messages.AddAsync(fromUser1ToUser2);
-//            //await context.SaveChangesAsync();
-
-//            return Ok();
-//        }
-//    }
-//}
+                await context.ConnectedChannels.AddAsync(new ConnectedChannel()
+                {
+                    For = associatedUser.Channel,
+                    Connected = requestedChannel
+                });
+                await context.SaveChangesAsync();
+                return JsonResponse.CreateGood(new ConnectChannelDTO()
+                {
+                    Channel = new ChannelDTO()
+                    {
+                        Id = requestedChannel.Id,
+                        Name = requestedChannel.Name,
+                        Description = requestedChannel.Description,
+                        Type = requestedChannel.ChannelTypeId
+                    }
+                });
+            }
+            catch (Exception e)
+            {
+                return JsonResponse.CreateBad(HttpStatusCode.InternalServerError, "Server fucked up");
+            }
+        }
+    }
+}

@@ -2,9 +2,22 @@
 
 namespace SignalChatik.Models
 {
-    public class Room : Channel
+    public class Room
     {
+        [Key]
+        public int Id { get; set; }
+
+
         [Required]
-        public string Owner { get; set; }
+        public Channel Channel { get; set; }
+
+        [Required]
+        public int ChannelId { get; set; }
+
+        [Required]
+        public User Owner { get; set; }
+
+        [Required]
+        public int OwnerId { get; set; }
     }
 }

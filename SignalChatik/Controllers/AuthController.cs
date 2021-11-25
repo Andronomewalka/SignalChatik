@@ -93,6 +93,13 @@ namespace SignalChatik.Controllers
                         {
                             RoleId = AuthUserRoleId.User
                         }
+                    },
+                    User = new User()
+                    {
+                        Channel = new Channel()
+                        {
+                            Name = userDTO.Email
+                        }
                     }
                 };
 
@@ -100,7 +107,7 @@ namespace SignalChatik.Controllers
                 {
                     RefreshToken = CreateRefreshToken(user)
                 };
-                user.RefreshTokens = new List<AuthUserRefreshToken>(){ userRefreshToken };
+                user.RefreshTokens = new List<AuthUserRefreshToken>() { userRefreshToken };
                 user.RefreshTokens.Add(userRefreshToken);
 
                 await context.AuthUsers.AddAsync(user);
@@ -143,7 +150,7 @@ namespace SignalChatik.Controllers
                     context.AuthUserRefreshTokens.FirstOrDefault(cur => cur.RefreshToken == refreshToken);
 
                 AuthUser user = users.FirstOrDefault(cur =>
-                        cur.Id.ToString() == decodedRefreshToken.Payload["sub"].ToString() &&
+                        cur.Guid.ToString() == decodedRefreshToken.Payload["sub"].ToString() &&
                         cur.Email == decodedRefreshToken.Payload["email"].ToString() &&
                         cur.RefreshTokens.Contains(userCurrentToken));
 
@@ -191,45 +198,6 @@ namespace SignalChatik.Controllers
         {
             object access = Request.Headers["Authorization"][0];
             Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out var refresh);
-
-            AuthUser authUser =
-                await context.AuthUsers
-                .FirstOrDefaultAsync(cur =>
-                    cur.RefreshTokens.Any(cur => cur.RefreshToken == refresh));
-
-            authUser.User = new User()
-            {
-                Content = new ChannelContent()
-                {
-                    Name = "some user"
-                }
-            };
-
-            await context.SaveChangesAsync();
-            await Task.Delay(200);
-            return Ok($"good - {UserId}");
-        }
-
-        [HttpGet]
-        [Authorize(Roles = "User")]
-        [Route("test2")]
-        public async Task<IActionResult> Test2()
-        {
-            object access = Request.Headers["Authorization"][0];
-            Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out var refresh);
-
-            List<AuthUser> authUsers = await context.AuthUsers
-                .Include(cur => cur.RefreshTokens)
-                .Include(cur => cur.User)
-                .ThenInclude(cur => cur.Content)
-                .ToListAsync();
-
-            AuthUser authUser = authUsers
-                .FirstOrDefault(cur => cur.RefreshTokens.Any(cur => cur.RefreshToken == refresh));
-
-            context.ChannelContents.Remove(authUser.User.Content);
-            context.AuthUsers.Remove(authUser);
-            await context.SaveChangesAsync();
             await Task.Delay(200);
             return Ok($"good - {UserId}");
         }
@@ -264,7 +232,7 @@ namespace SignalChatik.Controllers
             List<Claim> claims = new List<Claim>()
             {
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim(JwtRegisteredClaimNames.Sub, user.Guid.ToString()),
             };
 
             foreach (var role in user.Roles)
