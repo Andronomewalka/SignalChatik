@@ -1,7 +1,10 @@
 ﻿using SignalChatik.Models;
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
-namespace SignalChatik.DTO
+namespace SignalChatik.DTO.Channel
 {
     public class ChannelDTO
     {
@@ -9,15 +12,5 @@ namespace SignalChatik.DTO
         public ChannelType Type { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
-    }
-
-    public class GetChannelsDTO
-    {
-        public IEnumerable<ChannelDTO> Channels { get; set; }
-    }
-
-    public class ConnectChannelDTO
-    {
-        public ChannelDTO Channel { get; set; }
     }
 }

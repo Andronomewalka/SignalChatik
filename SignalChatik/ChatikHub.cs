@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using SignalChatik.DTO;
+using SignalChatik.DTO.Channel;
+using SignalChatik.DTO.Message;
 using SignalChatik.Helpers;
 using SignalChatik.Models;
 using System;
@@ -58,7 +60,7 @@ namespace SignalChatik
 
                 await context.Messages.AddAsync(message);
 
-                bool isChannelConnected = false;
+                bool isChannelJustConnected = false;
                 // connect receiver channel, if it's not connected yet
                 if (!await context.ConnectedChannels.AnyAsync(cur =>
                     cur.For == requestedChannel &&
@@ -69,7 +71,7 @@ namespace SignalChatik
                         For = requestedChannel,
                         Connected = associatedUser.Channel
                     });
-                    isChannelConnected = true;
+                    isChannelJustConnected = true;
                 }
                 await context.SaveChangesAsync();
 
@@ -84,13 +86,15 @@ namespace SignalChatik
                         Text = request.Message
                     }));
 
+                IClientProxy receiverUserId = null;
+
                 //if send to user
                 if (requestedChannel.ChannelTypeId == ChannelType.User)
                 {
-                    IClientProxy receiverUserId =
+                    receiverUserId =
                         this.Clients.User(connectedUsers.FirstOrDefault(cur => cur == requestedChannel.User.Auth.Guid.ToString()));
 
-                    if (isChannelConnected)
+                    if (isChannelJustConnected)
                     {
                         await receiverUserId.SendAsync(ChatikHubMethods.ChannelConnected.ToString(),
                             JsonResponse.CreateGood(new ChannelDTO()
@@ -101,11 +105,28 @@ namespace SignalChatik
                                 Type = ChannelType.User
                             }));
                     }
+                }
+
+                else if (requestedChannel.ChannelTypeId == ChannelType.Room)
+                {
+                    List<string> allRoomUsersGuids = await context.ConnectedChannels
+                        .Include(cur => cur.Connected)
+                            .ThenInclude(cur => cur.User)
+                                .ThenInclude(cur => cur.Auth)
+                        .Where(cur => cur.For == requestedChannel && cur.Connected != associatedUser.Channel)
+                        .Select(cur => cur.Connected.User.Auth.Guid.ToString().ToLower())
+                        .ToListAsync();
+
+                    receiverUserId = this.Clients.Users(allRoomUsersGuids.Intersect(connectedUsers));
+                }
+
+                if (receiverUserId != null)
+                {
                     await receiverUserId.SendAsync(ChatikHubMethods.ReceiveMessage.ToString(),
                         JsonResponse.CreateGood(new MessageDTO()
                         {
                             Id = message.Id,
-                            User = requestedChannel.Name,
+                            User = message.Sender == associatedUser.Channel ? associatedUser.Channel.Name : message.Sender.Name,
                             ReceiverId = requestedChannel.Id,
                             DateUtc = DateTime.UtcNow,
                             Type = MessageType.Receiver,

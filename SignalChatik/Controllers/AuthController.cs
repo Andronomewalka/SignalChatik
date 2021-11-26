@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using SignalChatik.DTO;
+using SignalChatik.DTO.Auth;
 using SignalChatik.Helpers;
 using SignalChatik.Models;
 using System;
@@ -45,7 +46,7 @@ namespace SignalChatik.Controllers
 
                 AuthUser requestedUser = users.FirstOrDefault(cur => cur.Email == userDTO.Email);
                 if (requestedUser == null)
-                    return JsonResponse.CreateBad(HttpStatusCode.NotFound, $"User not found");
+                    return JsonResponse.CreateBad(HttpStatusCode.NotFound, "User not found");
 
                 string storedHash = requestedUser.Hash;
                 string storedSalt = requestedUser.Salt;
@@ -79,7 +80,7 @@ namespace SignalChatik.Controllers
             {
                 bool isUserExist = context.AuthUsers.Any(cur => cur.Email == userDTO.Email);
                 if (isUserExist)
-                    return JsonResponse.CreateBad(HttpStatusCode.Forbidden, $"User already exist");
+                    return JsonResponse.CreateBad(HttpStatusCode.Forbidden, "User already exist");
 
                 string salt = Salt.CreateSalt();
                 AuthUser user = new AuthUser()
@@ -127,19 +128,19 @@ namespace SignalChatik.Controllers
             try
             {
                 if (!Request.Cookies.TryGetValue("X-Chatik-Refresh-Token", out string refreshToken))
-                    return JsonResponse.CreateBad(9001, $"No refresh token in cookies");
+                    return JsonResponse.CreateBad(9001, "No refresh token in cookies");
 
                 JwtSecurityToken decodedRefreshToken =
                     JwtHelper.ReadToken(refreshToken,
                         jwtOptions.Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters);
 
                 if (decodedRefreshToken == null)
-                    return JsonResponse.CreateBad(9001, $"Refresh token is broken or expired");
+                    return JsonResponse.CreateBad(9001, "Refresh token is broken or expired");
 
                 string tokenGuid = decodedRefreshToken.Payload["sub"]?.ToString();
                 string tokenEmail = decodedRefreshToken.Payload["email"]?.ToString();
                 if (string.IsNullOrEmpty(tokenGuid) || string.IsNullOrEmpty(tokenEmail))
-                    return JsonResponse.CreateBad(9001, $"Payload is invalid");
+                    return JsonResponse.CreateBad(9001, "Payload is invalid");
 
                 var users = await context.AuthUsers
                                          .Include(cur => cur.RefreshTokens)
@@ -155,7 +156,7 @@ namespace SignalChatik.Controllers
                         cur.RefreshTokens.Contains(userCurrentToken));
 
                 if (user == null)
-                    return JsonResponse.CreateBad(9001, $"Payload is invalid");
+                    return JsonResponse.CreateBad(9001, "Payload is invalid");
 
                 userCurrentToken.RefreshToken = CreateRefreshToken(user);
                 await context.SaveChangesAsync();

@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
-namespace SignalChatik.DTO
+namespace SignalChatik.DTO.Message
 {
     public enum MessageType
     {
@@ -16,15 +18,5 @@ namespace SignalChatik.DTO
         public DateTime DateUtc { get; set; }
         public MessageType Type { get; set; }
         public string Text { get; set; }
-    }
-
-    public class MessageResponseDTO
-    {
-        public MessageDTO Message { get; set; }
-    }
-
-    public class GetMessagesResponseDTO
-    {
-        public IEnumerable<MessageDTO> Messages { get; set; }
     }
 }

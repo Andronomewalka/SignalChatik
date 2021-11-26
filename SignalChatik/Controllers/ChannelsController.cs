@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SignalChatik.DTO;
+using SignalChatik.DTO.Channel;
+using SignalChatik.DTO.Room;
 using SignalChatik.Helpers;
 using SignalChatik.Models;
 using System;
@@ -35,7 +37,7 @@ namespace SignalChatik.Controllers
                     .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
                 if (associatedUser == null)
-                    return JsonResponse.CreateBad(401, $"No auth for user guid found");
+                    return JsonResponse.CreateBad(401, "No auth for user guid found");
 
                 var connectedChannels = context.ConnectedChannels
                     .Include(cur => cur.For)
@@ -49,7 +51,7 @@ namespace SignalChatik.Controllers
                         Type = cur.Connected.ChannelTypeId
                     });
 
-                return JsonResponse.CreateGood(new GetChannelsDTO()
+                return JsonResponse.CreateGood(new GetChannelsResponseDTO()
                 {
                     Channels = connectedChannels
                 });
@@ -63,19 +65,19 @@ namespace SignalChatik.Controllers
         [HttpPost]
         [Authorize(Roles = "User")]
         [Route("connect")]
-        public async Task<ActionResult<User>> Connect([FromBody] string channelName)
+        public async Task<ActionResult<User>> ConnectChannel([FromBody] string channelName)
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(channelName))
-                    return JsonResponse.CreateBad(400, $"Channel is empty");
+                    return JsonResponse.CreateBad(400, "Channel is empty");
 
                 User associatedUser = context.Users
                 .Include(cur => cur.Channel)
                 .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
                 if (associatedUser == null)
-                    return JsonResponse.CreateBad(401, $"No auth for user guid found");
+                    return JsonResponse.CreateBad(401, "No auth for user guid found");
 
                 List<ConnectedChannel> connectedChannels = context.ConnectedChannels
                     .Where(cur => cur.For == associatedUser.Channel)
@@ -85,18 +87,20 @@ namespace SignalChatik.Controllers
                     .FirstOrDefault(cur => cur.Name == channelName);
 
                 if (requestedChannel == null)
-                    return JsonResponse.CreateBad(404, $"Channel doesn't exist");
+                    return JsonResponse.CreateBad(404, "Channel doesn't exist");
 
                 if (connectedChannels.Any(cur => cur.Connected == requestedChannel))
-                    return JsonResponse.CreateBad(422, $"Channel already connected");
+                    return JsonResponse.CreateBad(422, "Channel already connected");
 
                 await context.ConnectedChannels.AddAsync(new ConnectedChannel()
                 {
                     For = associatedUser.Channel,
                     Connected = requestedChannel
                 });
+
                 await context.SaveChangesAsync();
-                return JsonResponse.CreateGood(new ConnectChannelDTO()
+
+                return JsonResponse.CreateGood(new ConnectChannelResponseDTO()
                 {
                     Channel = new ChannelDTO()
                     {

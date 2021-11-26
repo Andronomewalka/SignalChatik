@@ -2,12 +2,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SignalChatik.DTO;
+using SignalChatik.DTO.Message;
 using SignalChatik.Helpers;
 using SignalChatik.Models;
 using System;
 using System.Linq;
 using System.Net;
 using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace SignalChatik.Controllers
 {
@@ -25,37 +27,36 @@ namespace SignalChatik.Controllers
 
         [HttpGet]
         [Authorize(Roles = "User")]
-        public IActionResult Get([FromQuery]int channelId)
+        public async Task<IActionResult> Get([FromQuery] int channelId)
         {
             try
             {
                 if (channelId < 0)
-                    return JsonResponse.CreateBad(400, $"ChannelId is invalid");
+                    return JsonResponse.CreateBad(400, "ChannelId is invalid");
 
                 User associatedUser = context.Users
                     .Include(cur => cur.Channel)
                     .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
                 if (associatedUser == null)
-                    return JsonResponse.CreateBad(401, $"No auth for user guid found");
+                    return JsonResponse.CreateBad(401, "No auth for user guid found");
 
                 Channel requestedChannel = context.Channels.FirstOrDefault(cur => cur.Id == channelId);
                 if (requestedChannel == null)
-                    return JsonResponse.CreateBad(404, $"Channel doesn't exist");
+                    return JsonResponse.CreateBad(404, "Channel doesn't exist");
 
-                var messages = context.Messages
+                var messages = (await context.Messages
                     .Include(cur => cur.Sender)
                     .Include(cur => cur.Receiver)
-                    .Where(cur => (cur.Receiver == requestedChannel && cur.Sender == associatedUser.Channel) ||
-                                   (cur.Receiver == associatedUser.Channel && cur.Sender == requestedChannel))
-                    .ToList()
+                    .ToListAsync())
+                    .Where(cur => isMessagePresentedInChannels(cur, associatedUser.Channel, requestedChannel))
                     .Select(cur => new MessageDTO()
                     {
                         Id = cur.Id,
-                        User = cur.Receiver == requestedChannel ? cur.Sender.Name : cur.Receiver.Name,
+                        User = cur.Sender == associatedUser.Channel ? associatedUser.Channel.Name : cur.Sender.Name,
                         ReceiverId = cur.ReceiverId,
                         DateUtc = DateTime.UtcNow,
-                        Type = cur.Receiver == requestedChannel ? MessageType.Sender : MessageType.Receiver,
+                        Type = cur.Sender == associatedUser.Channel ? MessageType.Sender : MessageType.Receiver,
                         Text = cur.Data
                     });
 
@@ -69,5 +70,17 @@ namespace SignalChatik.Controllers
                 return JsonResponse.CreateBad(HttpStatusCode.InternalServerError, "Server fucked up");
             }
         }
+
+        private bool isMessagePresentedInChannels(Message message, Channel selfChannel, Channel toChannel)
+        {
+            if (message.Receiver.ChannelTypeId == ChannelType.User)
+                return (message.Receiver == selfChannel && message.Sender == toChannel) ||
+                    (message.Receiver == toChannel && message.Sender == selfChannel);
+
+            else if (message.Receiver.ChannelTypeId == ChannelType.Room)
+                return message.Receiver == toChannel;
+
+            return false;
+        }
     }
- }
+}
