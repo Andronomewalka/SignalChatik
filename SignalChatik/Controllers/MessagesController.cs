@@ -27,7 +27,7 @@ namespace SignalChatik.Controllers
 
         [HttpGet]
         [Authorize(Roles = "User")]
-        public async Task<IActionResult> Get([FromQuery] int channelId)
+        public IActionResult Get([FromQuery] int channelId)
         {
             try
             {
@@ -36,26 +36,30 @@ namespace SignalChatik.Controllers
 
                 User associatedUser = context.Users
                     .Include(cur => cur.Channel)
+                    .AsNoTracking()
                     .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
                 if (associatedUser == null)
                     return JsonResponse.CreateBad(401, "No auth for user guid found");
 
-                Channel requestedChannel = context.Channels.FirstOrDefault(cur => cur.Id == channelId);
+                Channel requestedChannel = context.Channels.AsNoTracking().FirstOrDefault(cur => cur.Id == channelId);
                 if (requestedChannel == null)
                     return JsonResponse.CreateBad(404, "Channel doesn't exist");
 
-                var messages = (await context.Messages
+                var messages = context.Messages
                     .Include(cur => cur.Sender)
                     .Include(cur => cur.Receiver)
-                    .ToListAsync())
-                    .Where(cur => isMessagePresentedInChannels(cur, associatedUser.Channel, requestedChannel))
+                    .AsNoTrackingWithIdentityResolution()
+                    .Where(cur => cur.Receiver.ChannelTypeId == ChannelType.User && 
+                                    ((cur.Receiver == associatedUser.Channel && cur.Sender == requestedChannel) ||
+                                    (cur.Receiver == requestedChannel && cur.Sender == associatedUser.Channel)) ||
+                                  cur.Receiver.ChannelTypeId == ChannelType.Room && cur.Receiver == requestedChannel)
                     .Select(cur => new MessageDTO()
                     {
                         Id = cur.Id,
                         User = cur.Sender == associatedUser.Channel ? associatedUser.Channel.Name : cur.Sender.Name,
                         ReceiverId = cur.ReceiverId,
-                        DateUtc = DateTime.UtcNow,
+                        DateUtc = cur.DateTimeUtc,
                         Type = cur.Sender == associatedUser.Channel ? MessageType.Sender : MessageType.Receiver,
                         Text = cur.Data
                     });
@@ -69,18 +73,6 @@ namespace SignalChatik.Controllers
             {
                 return JsonResponse.CreateBad(HttpStatusCode.InternalServerError, "Server fucked up");
             }
-        }
-
-        private bool isMessagePresentedInChannels(Message message, Channel selfChannel, Channel toChannel)
-        {
-            if (message.Receiver.ChannelTypeId == ChannelType.User)
-                return (message.Receiver == selfChannel && message.Sender == toChannel) ||
-                    (message.Receiver == toChannel && message.Sender == selfChannel);
-
-            else if (message.Receiver.ChannelTypeId == ChannelType.Room)
-                return message.Receiver == toChannel;
-
-            return false;
         }
     }
 }

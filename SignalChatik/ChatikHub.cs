@@ -47,6 +47,7 @@ namespace SignalChatik
                     .Include(cur => cur.User)
                         .ThenInclude(cur => cur.Auth)
                     .FirstOrDefault(cur => cur.Id == request.ChannelId);
+
                 if (requestedChannel == null)
                     await Clients.Caller.SendAsync(ChatikHubMethods.SendMessageFailed.ToString(),
                         JsonResponse.CreateBad(404, $"Channel doesn't exist"));
@@ -55,46 +56,22 @@ namespace SignalChatik
                 {
                     Sender = associatedUser.Channel,
                     Receiver = requestedChannel,
-                    Data = request.Message
+                    Data = request.Message,
+                    DateTimeUtc = DateTime.UtcNow
                 };
 
                 await context.Messages.AddAsync(message);
 
-                bool isChannelJustConnected = false;
-                // connect receiver channel, if it's not connected yet
-                if (!await context.ConnectedChannels.AnyAsync(cur =>
-                    cur.For == requestedChannel &&
-                    cur.Connected == associatedUser.Channel))
-                {
-                    await context.ConnectedChannels.AddAsync(new ConnectedChannel()
-                    {
-                        For = requestedChannel,
-                        Connected = associatedUser.Channel
-                    });
-                    isChannelJustConnected = true;
-                }
-                await context.SaveChangesAsync();
-
-                await Clients.Caller.SendAsync(ChatikHubMethods.SendMessageSuccess.ToString(),
-                    JsonResponse.CreateGood(new MessageDTO()
-                    {
-                        Id = message.Id,
-                        User = associatedUser.Channel.Name,
-                        ReceiverId = requestedChannel.Id,
-                        DateUtc = DateTime.UtcNow,
-                        Type = MessageType.Sender,
-                        Text = request.Message
-                    }));
-
                 IClientProxy receiverUserId = null;
 
-                //if send to user
                 if (requestedChannel.ChannelTypeId == ChannelType.User)
                 {
+                    bool isJustConnected = await UpdateConnectionWithUser(associatedUser, requestedChannel);
+
                     receiverUserId =
                         this.Clients.User(connectedUsers.FirstOrDefault(cur => cur == requestedChannel.User.Auth.Guid.ToString()));
 
-                    if (isChannelJustConnected)
+                    if (isJustConnected)
                     {
                         await receiverUserId.SendAsync(ChatikHubMethods.ChannelConnected.ToString(),
                             JsonResponse.CreateGood(new ChannelDTO()
@@ -105,16 +82,19 @@ namespace SignalChatik
                                 Type = ChannelType.User
                             }));
                     }
-                }
 
+                }
                 else if (requestedChannel.ChannelTypeId == ChannelType.Room)
                 {
+                    await UpdateConnectionWithRoom(associatedUser, requestedChannel);
+
                     List<string> allRoomUsersGuids = await context.ConnectedChannels
                         .Include(cur => cur.Connected)
                             .ThenInclude(cur => cur.User)
                                 .ThenInclude(cur => cur.Auth)
-                        .Where(cur => cur.For == requestedChannel && cur.Connected != associatedUser.Channel)
-                        .Select(cur => cur.Connected.User.Auth.Guid.ToString().ToLower())
+                        .AsNoTrackingWithIdentityResolution()
+                        .Where(cur => cur.For != associatedUser.Channel && cur.Connected == requestedChannel)
+                        .Select(cur => cur.For.User.Auth.Guid.ToString().ToLower())
                         .ToListAsync();
 
                     receiverUserId = this.Clients.Users(allRoomUsersGuids.Intersect(connectedUsers));
@@ -128,8 +108,19 @@ namespace SignalChatik
                             Id = message.Id,
                             User = message.Sender == associatedUser.Channel ? associatedUser.Channel.Name : message.Sender.Name,
                             ReceiverId = requestedChannel.Id,
-                            DateUtc = DateTime.UtcNow,
+                            DateUtc = message.DateTimeUtc,
                             Type = MessageType.Receiver,
+                            Text = request.Message
+                        }));
+
+                    await Clients.Caller.SendAsync(ChatikHubMethods.SendMessageSuccess.ToString(),
+                        JsonResponse.CreateGood(new MessageDTO()
+                        {
+                            Id = message.Id,
+                            User = associatedUser.Channel.Name,
+                            ReceiverId = requestedChannel.Id,
+                            DateUtc = message.DateTimeUtc,
+                            Type = MessageType.Sender,
                             Text = request.Message
                         }));
                 }
@@ -139,6 +130,54 @@ namespace SignalChatik
                 await Clients.Caller.SendAsync(ChatikHubMethods.SendMessageSuccess.ToString(),
                     JsonResponse.CreateBad(HttpStatusCode.InternalServerError, "Server fucked up"));
             }
+        }
+
+        private async Task<bool> UpdateConnectionWithUser(User fromUser, Channel toChannel)
+        {
+            // connect receiver channel, if it's not connected yet
+            bool isChannelJustConnected = false;
+
+            var connectedBackChannel = await context.ConnectedChannels
+                        .FirstOrDefaultAsync(cur => cur.For == fromUser.Channel &&
+                            cur.Connected == toChannel &&
+                            !cur.IsConnectedBack);
+
+            ConnectedChannel connectedChannel = await context.ConnectedChannels
+                        .FirstOrDefaultAsync(cur => (cur.For == fromUser.Channel && cur.Connected == toChannel) ||
+                                                    (cur.For == toChannel && cur.Connected == fromUser.Channel));
+
+            if (connectedChannel == null)
+            {
+                connectedChannel = new ConnectedChannel()
+                {
+                    For = toChannel,
+                    Connected = fromUser.Channel
+                };
+                await context.ConnectedChannels.AddAsync(connectedChannel);
+                isChannelJustConnected = true;
+            }
+            else if (!connectedChannel.IsConnectedBack)
+            {
+                connectedChannel.IsConnectedBack = true;
+                isChannelJustConnected = true;
+            }
+            connectedChannel.LastInteractionTime = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+            return isChannelJustConnected;
+        }
+
+        private async Task UpdateConnectionWithRoom(User fromUser, Channel toChannel)
+        {
+            var connectedChannels = context.ConnectedChannels
+                .Include(cur => cur.Connected)
+                .Where(cur => cur.Connected == toChannel && cur.Connected != fromUser.Channel);
+
+            await connectedChannels.ForEachAsync(cur =>
+            {
+                cur.IsConnectedBack = true;
+                cur.LastInteractionTime = DateTime.UtcNow;
+            });
+            await context.SaveChangesAsync();
         }
 
         public override Task OnConnectedAsync()

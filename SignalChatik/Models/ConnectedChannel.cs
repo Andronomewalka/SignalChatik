@@ -12,6 +12,12 @@ namespace SignalChatik.Models
         [Key]
         public int Id { get; set; }
 
+        [Required]
+        public DateTime LastInteractionTime { get; set; }
+
+        [Required]
+        public bool IsConnectedBack { get; set; }
+
 
         [Required]
         [ForeignKey("ForChannelId")]

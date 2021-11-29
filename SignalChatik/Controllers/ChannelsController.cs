@@ -28,32 +28,52 @@ namespace SignalChatik.Controllers
 
         [HttpGet]
         [Authorize(Roles = "User")]
-        public IActionResult Get()
+        public async Task<IActionResult> Get()
         {
             try
             {
                 User associatedUser = context.Users
                     .Include(cur => cur.Channel)
+                    .AsNoTracking()
                     .FirstOrDefault(cur => cur.Auth.Guid.ToString() == UserId.ToString());
 
                 if (associatedUser == null)
                     return JsonResponse.CreateBad(401, "No auth for user guid found");
 
-                var connectedChannels = context.ConnectedChannels
-                    .Include(cur => cur.For)
-                    .Include(cur => cur.Connected)
+                var allConnectedChannels = context.ConnectedChannels
+                   .Include(cur => cur.For)
+                   .Include(cur => cur.Connected)
+                   .AsNoTrackingWithIdentityResolution();
+
+                var connectedChannels = allConnectedChannels
                     .Where(cur => cur.For == associatedUser.Channel)
                     .Select(cur => new ChannelDTO()
                     {
                         Id = cur.Connected.Id,
                         Name = cur.Connected.Name,
                         Description = cur.Connected.Description,
-                        Type = cur.Connected.ChannelTypeId
+                        Type = cur.Connected.ChannelTypeId,
+                        LastInteractionTime = cur.LastInteractionTime
                     });
+
+                var reverseConnectedChannels = allConnectedChannels
+                    .Where(cur => cur.Connected == associatedUser.Channel && cur.IsConnectedBack)
+                    .Select(cur => new ChannelDTO()
+                    {
+                        Id = cur.For.Id,
+                        Name = cur.For.Name,
+                        Description = cur.For.Description,
+                        Type = cur.For.ChannelTypeId,
+                        LastInteractionTime = cur.LastInteractionTime
+                    });
+
+                var resultConnectedChannels = connectedChannels
+                    .Concat(reverseConnectedChannels)
+                    .OrderByDescending(cur => cur.LastInteractionTime);
 
                 return JsonResponse.CreateGood(new GetChannelsResponseDTO()
                 {
-                    Channels = connectedChannels
+                    Channels = resultConnectedChannels
                 });
             }
             catch (Exception e)
@@ -79,24 +99,36 @@ namespace SignalChatik.Controllers
                 if (associatedUser == null)
                     return JsonResponse.CreateBad(401, "No auth for user guid found");
 
-                List<ConnectedChannel> connectedChannels = context.ConnectedChannels
-                    .Where(cur => cur.For == associatedUser.Channel)
-                    .ToList();
-
                 Channel requestedChannel = context.Channels
                     .FirstOrDefault(cur => cur.Name == channelName);
 
                 if (requestedChannel == null)
                     return JsonResponse.CreateBad(404, "Channel doesn't exist");
 
-                if (connectedChannels.Any(cur => cur.Connected == requestedChannel))
+                if (await context.ConnectedChannels
+                        .AsNoTrackingWithIdentityResolution()
+                        .AnyAsync(cur => cur.For == associatedUser.Channel && cur.Connected == requestedChannel))
                     return JsonResponse.CreateBad(422, "Channel already connected");
 
-                await context.ConnectedChannels.AddAsync(new ConnectedChannel()
+                var reverseConnection = await context.ConnectedChannels
+                    .FirstOrDefaultAsync(cur => cur.For == requestedChannel && cur.Connected == associatedUser.Channel);
+
+                if (reverseConnection != null)
                 {
-                    For = associatedUser.Channel,
-                    Connected = requestedChannel
-                });
+                    if (reverseConnection.IsConnectedBack)
+                        return JsonResponse.CreateBad(422, "Channel already connected");
+
+                    reverseConnection.IsConnectedBack = true;
+                }
+                else
+                {
+                    await context.ConnectedChannels.AddAsync(new ConnectedChannel()
+                    {
+                        For = associatedUser.Channel,
+                        Connected = requestedChannel,
+                        IsConnectedBack = requestedChannel.ChannelTypeId == ChannelType.Room
+                    });
+                }
 
                 await context.SaveChangesAsync();
 

@@ -3,15 +3,17 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SignalChatik;
 
 namespace SignalChatik.Migrations
 {
     [DbContext(typeof(ChatikContext))]
-    partial class ChatikContextModelSnapshot : ModelSnapshot
+    [Migration("20211129105559_MoveLastIntegrationTimeToConnectedChannels")]
+    partial class MoveLastIntegrationTimeToConnectedChannels
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -125,9 +127,6 @@ namespace SignalChatik.Migrations
 
                     b.Property<int>("ForChannelId")
                         .HasColumnType("int");
-
-                    b.Property<bool>("IsConnectedBack")
-                        .HasColumnType("bit");
 
                     b.Property<DateTime>("LastInteractionTime")
                         .HasColumnType("datetime2");
